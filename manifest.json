@@ -1,0 +1,53 @@
+{
+  "manifest_version": 3,
+  "name": "AEO Queries - See What AI Is Searching",
+  "version": "1.0.0",
+  "description": "Capture and display search queries made by ChatGPT, Claude, Perplexity, and other AI interfaces for AEO/SEO research.",
+  "permissions": [
+    "tabs",
+    "scripting",
+    "storage",
+    "webRequest"
+  ],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*",
+    "https://claude.ai/*",
+    "https://perplexity.ai/*",
+    "https://gemini.google.com/*",
+    "https://copilot.microsoft.com/*",
+    "https://*.anthropic.com/*",
+    "https://google.com/*",
+    "https://www.google.com/*",
+    "https://bing.com/*",
+    "https://www.bing.com/*",
+    "*://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*",
+        "https://claude.ai/*",
+        "https://perplexity.ai/*",
+        "https://gemini.google.com/*",
+        "https://copilot.microsoft.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "AEO Queries"
+  },
+  "icons": {
+    "16": "images/icon-16.png",
+    "48": "images/icon-48.png",
+    "128": "images/icon-128.png"
+  },
+  "options_page": "options.html"
+}
