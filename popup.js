@@ -59,9 +59,12 @@ function renderQueries() {
     return;
   }
 
-  content.innerHTML = filtered.reverse().map(query => `
+  content.innerHTML = filtered.slice().reverse().map(query => `
     <div class="query-item">
-      <div class="query-source" style="background: ${getSourceColor(query.source)}">${query.source}</div>
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+        <div class="query-source" style="background: ${getSourceColor(query.source)};margin:0">${query.source}</div>
+        ${query.webSearch ? '<span title="AI used web search" style="font-size:11px;background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;border-radius:3px;padding:2px 6px;">🔍 web search</span>' : ''}
+      </div>
       <div class="query-text">${escapeHtml(query.query)}</div>
       <div class="query-meta">
         <span class="query-time">${formatTime(query.timestamp)}</span>

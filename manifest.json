@@ -4,24 +4,18 @@
   "version": "1.0.0",
   "description": "Capture and display search queries made by ChatGPT, Claude, Perplexity, and other AI interfaces for AEO/SEO research.",
   "permissions": [
-    "tabs",
-    "scripting",
-    "storage",
-    "webRequest"
+    "storage"
   ],
   "host_permissions": [
     "https://chatgpt.com/*",
     "https://chat.openai.com/*",
     "https://claude.ai/*",
+    "https://www.claude.ai/*",
     "https://perplexity.ai/*",
+    "https://www.perplexity.ai/*",
     "https://gemini.google.com/*",
     "https://copilot.microsoft.com/*",
-    "https://*.anthropic.com/*",
-    "https://google.com/*",
-    "https://www.google.com/*",
-    "https://bing.com/*",
-    "https://www.bing.com/*",
-    "*://*/*"
+    "https://www.bing.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -32,12 +26,29 @@
         "https://chatgpt.com/*",
         "https://chat.openai.com/*",
         "https://claude.ai/*",
+        "https://www.claude.ai/*",
         "https://perplexity.ai/*",
+        "https://www.perplexity.ai/*",
         "https://gemini.google.com/*",
         "https://copilot.microsoft.com/*"
       ],
       "js": ["content.js"],
       "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["injected.js"],
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*",
+        "https://claude.ai/*",
+        "https://www.claude.ai/*",
+        "https://perplexity.ai/*",
+        "https://www.perplexity.ai/*",
+        "https://gemini.google.com/*",
+        "https://copilot.microsoft.com/*"
+      ]
     }
   ],
   "action": {
