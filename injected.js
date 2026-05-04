@@ -16,30 +16,15 @@
       const method = (opts.method || 'GET').toUpperCase();
       const body = opts.body;
 
-      // ── ChatGPT: any POST to backend-api ────────────────────────────────
-      if (url.includes('chatgpt.com') || url.includes('openai.com') || getSource() === 'ChatGPT') {
-        if (method === 'POST' && (
-          url.includes('/backend-api') ||
-          url.includes('/backend-anon') ||
-          url.includes('/api/f/') ||
-          url.includes('conversation')
-        )) {
-          _log('ChatGPT POST intercepted:', url);
-          const res = await _origFetch.apply(this, args);
+      // ── ChatGPT: intercept conversation POST ────────────────────────────
+      if (getSource() === 'ChatGPT' && method === 'POST' &&
+          (url.includes('/backend-api/f/conversation') || url.includes('/backend-api/conversation'))) {
+        _log('ChatGPT POST intercepted:', url);
+        const res = await _origFetch.apply(this, args);
 
-          // Immediate: grab user message from request body
-          if (body && typeof body === 'string') {
-            const q = extractChatGPTRequestQuery(body);
-            if (q) {
-              _log('ChatGPT user msg (immediate):', q);
-              emitQuery(q, 'ChatGPT', false);
-            }
-          }
-
-          // Async: tap SSE stream and get real search queries
-          tapChatGPTStream(res.clone());
-          return res;
-        }
+        // Drain the stream (so the page works), then fetch real search queries from API
+        drainAndFetchChatGPT(res.clone());
+        return res;
       }
 
       // ── Claude.ai: tap SSE stream for web_search tool calls ─────────────
@@ -69,101 +54,54 @@
     return _origFetch.apply(this, args);
   };
 
-  // ── Grab user message from ChatGPT POST body ────────────────────────────
-  function extractChatGPTRequestQuery(bodyStr) {
-    try {
-      const b = JSON.parse(bodyStr);
-      // New format: messages array
-      if (Array.isArray(b.messages)) {
-        for (const m of [...b.messages].reverse()) {
-          if (m.author?.role === 'user' || m.role === 'user') {
-            const parts = m.content?.parts;
-            if (Array.isArray(parts) && typeof parts[0] === 'string' && parts[0].trim().length > 1) {
-              return parts[0].trim();
-            }
-            if (typeof m.content === 'string' && m.content.trim().length > 1) {
-              return m.content.trim();
-            }
-          }
-        }
-      }
-      // Older format
-      if (typeof b.prompt === 'string' && b.prompt.trim().length > 1) return b.prompt.trim();
-    } catch (_) {}
-    return null;
-  }
-
-  // ── ChatGPT SSE tap ─────────────────────────────────────────────────────
-  async function tapChatGPTStream(clonedRes) {
-    let conversationId = null;
-    let userQuery = null;
-
+  // ── ChatGPT: drain stream then fetch real search queries via API ────────
+  async function drainAndFetchChatGPT(clonedRes) {
+    // Drain the SSE stream so the page renders normally
     try {
       const reader = clonedRes.body.getReader();
-      const dec = new TextDecoder();
-      let buf = '';
-
       while (true) {
-        const { done, value } = await reader.read();
+        const { done } = await reader.read();
         if (done) break;
-        buf += dec.decode(value, { stream: true });
-        const lines = buf.split('\n');
-        buf = lines.pop() || '';
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          const data = line.slice(6);
-          if (data === '[DONE]') continue;
-          try {
-            const d = JSON.parse(data);
-            if (d.conversation_id && !conversationId) conversationId = d.conversation_id;
-            if (d.type === 'input_message') {
-              const parts = d.input_message?.content?.parts;
-              if (Array.isArray(parts) && typeof parts[0] === 'string') {
-                userQuery = parts[0].trim();
-              }
-            }
-          } catch (_) {}
-        }
       }
-    } catch (e) { _log('ChatGPT stream error:', e); }
+    } catch (_) {}
 
-    _log('ChatGPT stream done. conversationId:', conversationId);
-    if (conversationId) await fetchChatGPTSearchQueries(conversationId, userQuery);
-  }
+    // After stream ends, conversation ID is in the URL: /c/<id>
+    // (for new conversations ChatGPT navigates there during streaming)
+    // Small delay to let the URL settle
+    await new Promise(r => setTimeout(r, 500));
+    const convId = location.pathname.match(/\/c\/([a-f0-9-]+)/)?.[1];
+    _log('ChatGPT stream done. convId from URL:', convId);
+    if (!convId) return;
 
-  async function fetchChatGPTSearchQueries(conversationId, userQuery) {
     try {
-      const sessRes = await _origFetch('/api/auth/session');
-      const sess = await sessRes.json();
+      const sess = await (await _origFetch('/api/auth/session')).json();
       const token = sess?.accessToken;
       if (!token) { _log('ChatGPT: no auth token'); return; }
 
-      const convRes = await _origFetch(`/backend-api/conversation/${conversationId}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const conv = await convRes.json();
-      if (!conv?.mapping) { _log('ChatGPT: no mapping in conversation'); return; }
+      const conv = await (await _origFetch(`/backend-api/conversation/${convId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })).json();
 
+      if (!conv?.mapping) { _log('ChatGPT: no mapping'); return; }
+
+      // Collect ALL search queries across all tool messages in this conversation,
+      // deduplicated — emit only ones we haven't seen yet
       const nodes = Object.values(conv.mapping);
-      const searchQueries = [];
-
+      const found = [];
       for (const node of nodes) {
         const msg = node.message;
         if (!msg || msg.author?.role !== 'tool') continue;
         const queries = msg.metadata?.search_model_queries?.queries;
         if (Array.isArray(queries)) {
-          searchQueries.push(...queries.filter(q => typeof q === 'string' && q.trim().length > 1));
+          queries.forEach(q => { if (typeof q === 'string' && q.trim().length > 1) found.push(q.trim()); });
         }
       }
 
-      _log('ChatGPT search queries found:', searchQueries);
-      if (searchQueries.length > 0) {
-        searchQueries.forEach(q => emitQuery(q, 'ChatGPT', true));
-      } else if (userQuery) {
-        emitQuery(userQuery, 'ChatGPT', false);
-      }
-    } catch (e) { _log('ChatGPT conversation fetch error:', e); }
+      _log('ChatGPT search queries in conv:', found);
+      // Emit each unique query; content.js dedupes within 30s so safe to re-emit
+      const unique = [...new Set(found)];
+      unique.forEach(q => emitQuery(q, 'ChatGPT', true));
+    } catch (e) { _log('ChatGPT API fetch error:', e); }
   }
 
   // ── Claude.ai SSE tap ────────────────────────────────────────────────────
