@@ -1,8 +1,16 @@
 // Toggle side panel when extension icon is clicked
-chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+// Wrap defensively — if sidePanel API isn't ready it must not crash the
+// service worker before the message listener below is registered.
+try {
+  if (chrome.sidePanel?.setPanelBehavior) {
+    chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+  }
+} catch (_) {}
 
 chrome.action.onClicked.addListener((tab) => {
-  chrome.sidePanel.open({ windowId: tab.windowId }).catch(() => {});
+  try {
+    chrome.sidePanel?.open({ windowId: tab.windowId });
+  } catch (_) {}
 });
 
 // Receive queries forwarded by content scripts and persist them
