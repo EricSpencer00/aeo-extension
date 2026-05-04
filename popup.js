@@ -1,18 +1,38 @@
 let allQueries = [];
 let activeFilters = new Set();
+let searchTerm = '';
+
+// ── Controls ─────────────────────────────────────────────────────────────────
 
 document.getElementById('clearBtn').addEventListener('click', () => {
   if (confirm('Clear all captured queries?')) {
     chrome.storage.local.set({ queries: [] });
     allQueries = [];
-    renderQueries();
+    renderAll();
   }
 });
 
 document.getElementById('exportBtn').addEventListener('click', exportCSV);
-document.getElementById('settingsBtn').addEventListener('click', () => {
-  chrome.runtime.openOptionsPage();
+
+document.getElementById('searchInput').addEventListener('input', (e) => {
+  searchTerm = e.target.value.toLowerCase().trim();
+  renderAll();
 });
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function highlightMatch(text, term) {
+  if (!term) return escapeHtml(text);
+  const escaped = escapeHtml(text);
+  const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return escaped.replace(new RegExp(`(${escapedTerm})`, 'gi'), '<mark>$1</mark>');
+}
 
 function formatTime(timestamp) {
   const now = new Date();
@@ -29,6 +49,20 @@ function formatTime(timestamp) {
   return date.toLocaleDateString();
 }
 
+function dayKey(ts) {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+function dayLabel(ts) {
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (dayKey(ts) === dayKey(today)) return 'Today';
+  if (dayKey(ts) === dayKey(yesterday)) return 'Yesterday';
+  return new Date(ts).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+}
+
 function getSourceColor(source) {
   const colors = {
     'ChatGPT': '#10a981',
@@ -36,128 +70,182 @@ function getSourceColor(source) {
     'Perplexity': '#3b82f6',
     'Google Gemini': '#ea4335',
     'Microsoft Copilot': '#00a4ef',
-    'Unknown': '#999'
+    'Unknown': '#6b7280'
   };
   return colors[source] || colors['Unknown'];
 }
 
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+// ── Filtered list ─────────────────────────────────────────────────────────────
+
+function getFiltered() {
+  let list = allQueries;
+  if (activeFilters.size > 0) {
+    list = list.filter(q => activeFilters.has(q.source));
+  }
+  if (searchTerm) {
+    list = list.filter(q =>
+      q.query.toLowerCase().includes(searchTerm) ||
+      q.source.toLowerCase().includes(searchTerm)
+    );
+  }
+  return list;
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+
+function renderAll() {
+  updateFilters();
+  renderQueries();
+}
+
 function renderQueries() {
   const content = document.getElementById('content');
-
-  let filtered = allQueries;
-  if (activeFilters.size > 0) {
-    filtered = allQueries.filter(q => activeFilters.has(q.source));
-  }
+  const filtered = getFiltered().slice().reverse();
 
   if (filtered.length === 0) {
+    const icon = (searchTerm || activeFilters.size > 0) ? '🔍' : '🤖';
+    const title = searchTerm ? 'No matches found'
+      : activeFilters.size > 0 ? 'No queries for selected sources'
+      : 'No queries captured yet';
+    const body = searchTerm
+      ? `No queries match "<strong>${escapeHtml(searchTerm)}</strong>"`
+      : activeFilters.size > 0 ? 'Try selecting a different source filter.'
+      : 'Open ChatGPT, Claude, Perplexity, or Gemini<br>and ask a question to start capturing.';
+
     content.innerHTML = `
       <div class="empty-state">
-        <p>${activeFilters.size > 0 ? 'No queries for selected filters' : 'No queries captured yet'}</p>
-        <p style="font-size: 11px;">Open an AI chat interface and ask a question to see queries.</p>
+        <div class="empty-icon">${icon}</div>
+        <h3>${title}</h3>
+        <p>${body}</p>
       </div>
     `;
     return;
   }
 
-  content.innerHTML = filtered.slice().reverse().map(query => `
-    <div class="query-item">
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
-        <div class="query-source" style="background: ${getSourceColor(query.source)};margin:0">${query.source}</div>
-        ${query.webSearch ? '<span title="AI used web search" style="font-size:11px;background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;border-radius:3px;padding:2px 6px;">🔍 web search</span>' : ''}
-      </div>
-      <div class="query-text">${escapeHtml(query.query)}</div>
-      <div class="query-meta">
-        <span class="query-time">${formatTime(query.timestamp)}</span>
-        <button class="copy-btn" onclick="copyToClipboard('${escapeHtml(query.query).replace(/'/g, "\\'")}')">Copy</button>
-      </div>
-    </div>
-  `).join('');
+  // Group by day
+  const groups = [];
+  const groupMap = {};
+  for (const q of filtered) {
+    const k = dayKey(q.timestamp);
+    if (!groupMap[k]) {
+      const g = { label: dayLabel(q.timestamp), items: [] };
+      groupMap[k] = g;
+      groups.push(g);
+    }
+    groupMap[k].items.push(q);
+  }
+
+  let html = '';
+  for (const g of groups) {
+    html += `<div class="date-group-label">${g.label}</div>`;
+    for (const q of g.items) {
+      const safeQuery = escapeHtml(q.query).replace(/'/g, '&#39;');
+      html += `
+        <div class="query-item">
+          <div class="query-header">
+            <span class="query-source" style="background:${getSourceColor(q.source)}">${q.source}</span>
+            ${q.webSearch ? '<span class="web-badge">🔍 web search</span>' : ''}
+          </div>
+          <div class="query-text">${highlightMatch(q.query, searchTerm)}</div>
+          <div class="query-footer">
+            <span class="query-time">${formatTime(q.timestamp)}</span>
+            <button class="copy-btn" onclick="copyQuery(this, '${safeQuery}')">Copy</button>
+          </div>
+        </div>
+      `;
+    }
+  }
+  content.innerHTML = html;
 }
 
 function updateFilters() {
   const sources = [...new Set(allQueries.map(q => q.source))];
-  const filterContainer = document.getElementById('filterContainer');
+  const counts = {};
+  allQueries.forEach(q => { counts[q.source] = (counts[q.source] || 0) + 1; });
 
-  filterContainer.innerHTML = sources.map(source => `
-    <button class="filter-tag ${activeFilters.has(source) ? 'active' : ''}"
-            onclick="toggleFilter('${source}')"
-            style="border-color: ${getSourceColor(source)}; color: ${activeFilters.has(source) ? 'white' : getSourceColor(source)}; background: ${activeFilters.has(source) ? getSourceColor(source) : 'white'}">
-      ${source}
-    </button>
-  `).join('');
+  document.getElementById('filterContainer').innerHTML = sources.map(source => {
+    const active = activeFilters.has(source);
+    const color = getSourceColor(source);
+    return `
+      <button class="filter-tag" onclick="toggleFilter('${source}')"
+              style="border-color:${color};color:${active ? 'white' : color};background:${active ? color : 'white'}">
+        ${source} <span style="opacity:0.65;font-size:10px">${counts[source]}</span>
+      </button>
+    `;
+  }).join('');
 
   updateStats();
 }
 
-function toggleFilter(source) {
-  if (activeFilters.has(source)) {
-    activeFilters.delete(source);
-  } else {
-    activeFilters.add(source);
-  }
-  updateFilters();
-  renderQueries();
-}
-
 function updateStats() {
+  const todayK = dayKey(Date.now());
+  const counts = {};
+  allQueries.forEach(q => { counts[q.source] = (counts[q.source] || 0) + 1; });
+  const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+
   document.getElementById('totalCount').textContent = allQueries.length;
-
-  const breakdown = {};
-  allQueries.forEach(q => {
-    breakdown[q.source] = (breakdown[q.source] || 0) + 1;
-  });
-
-  const breakdownHtml = Object.entries(breakdown)
-    .map(([source, count]) => `<span style="margin-right: 12px;"><strong>${source}:</strong> ${count}</span>`)
-    .join('');
-
-  document.getElementById('sourceBreakdown').innerHTML = breakdownHtml;
+  document.getElementById('webSearchCount').textContent = allQueries.filter(q => q.webSearch).length;
+  document.getElementById('todayCount').textContent = allQueries.filter(q => dayKey(q.timestamp) === todayK).length;
+  document.getElementById('topSourceName').textContent = top ? top[0].split(' ')[0] : '—';
 }
 
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
+// ── Actions ───────────────────────────────────────────────────────────────────
+
+function toggleFilter(source) {
+  activeFilters.has(source) ? activeFilters.delete(source) : activeFilters.add(source);
+  renderAll();
 }
 
-function copyToClipboard(text) {
-  navigator.clipboard.writeText(text).then(() => {
-    alert('Copied to clipboard!');
+function copyQuery(btn, text) {
+  const decoded = text.replace(/&#39;/g, "'");
+  navigator.clipboard.writeText(decoded).then(() => {
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    showToast('Copied to clipboard');
+    setTimeout(() => {
+      btn.textContent = 'Copy';
+      btn.classList.remove('copied');
+    }, 1500);
   });
 }
 
 function exportCSV() {
   if (allQueries.length === 0) {
-    alert('No queries to export');
+    showToast('No queries to export');
     return;
   }
-
-  let csv = 'Source,Query,Timestamp\n';
+  let csv = 'Source,Query,Web Search,Timestamp\n';
   allQueries.forEach(q => {
     const query = `"${q.query.replace(/"/g, '""')}"`;
-    const date = new Date(q.timestamp).toISOString();
-    csv += `${q.source},${query},${date}\n`;
+    csv += `${q.source},${query},${q.webSearch ? 'yes' : 'no'},${new Date(q.timestamp).toISOString()}\n`;
   });
-
   const blob = new Blob([csv], { type: 'text/csv' });
-  const url = window.URL.createObjectURL(blob);
+  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
   a.download = `aeo-queries-${new Date().toISOString().split('T')[0]}.csv`;
   a.click();
-  window.URL.revokeObjectURL(url);
+  URL.revokeObjectURL(url);
+  showToast('Exported!');
 }
+
+// ── Storage ───────────────────────────────────────────────────────────────────
 
 chrome.storage.local.get('queries', (result) => {
   allQueries = result.queries || [];
-  updateFilters();
-  renderQueries();
+  renderAll();
 });
 
-chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName === 'local' && changes.queries) {
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.queries) {
     allQueries = changes.queries.newValue || [];
-    updateFilters();
-    renderQueries();
+    renderAll();
   }
 });

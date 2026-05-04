@@ -21,16 +21,17 @@
         return res;
       }
 
+      // ── Claude.ai: tap SSE stream for web_search tool calls ───────────────
+      if (getSource() === 'Claude' && url.includes('/completion')) {
+        const res = await _origFetch.apply(this, args);
+        tapClaudeStream(res.clone(), body);
+        return res;
+      }
+
       // ── Perplexity: capture query_str from request body ───────────────────
       if (body && typeof body === 'string' && getSource() === 'Perplexity') {
         const q = extractPerplexityQuery(body);
         if (q) emitQuery(q, 'Perplexity', false);
-      }
-
-      // ── Claude.ai: capture from request body ─────────────────────────────
-      if (body && typeof body === 'string' && getSource() === 'Claude') {
-        const q = extractClaudeQuery(body);
-        if (q) emitQuery(q, 'Claude', false);
       }
 
       // ── Gemini / Copilot: generic fallback ───────────────────────────────
@@ -69,11 +70,9 @@
           if (data === '[DONE]') continue;
           try {
             const d = JSON.parse(data);
-            // Grab conversation_id from any marker
             if (d.conversation_id && !conversationId) {
               conversationId = d.conversation_id;
             }
-            // Grab user query from input_message event
             if (d.type === 'input_message') {
               const parts = d.input_message?.content?.parts;
               if (Array.isArray(parts) && typeof parts[0] === 'string') {
@@ -85,7 +84,6 @@
       }
     } catch (_) {}
 
-    // After stream ends, fetch the full conversation to get real search queries
     if (conversationId) {
       await fetchChatGPTSearchQueries(conversationId, userQuery);
     }
@@ -93,20 +91,17 @@
 
   async function fetchChatGPTSearchQueries(conversationId, userQuery) {
     try {
-      // Get auth token
       const sessRes = await _origFetch('/api/auth/session');
       const sess = await sessRes.json();
       const token = sess?.accessToken;
       if (!token) return;
 
-      // Fetch conversation data
       const convRes = await _origFetch(`/backend-api/conversation/${conversationId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const conv = await convRes.json();
       if (!conv?.mapping) return;
 
-      // Extract actual search queries from tool messages
       const nodes = Object.values(conv.mapping);
       const searchQueries = [];
 
@@ -120,13 +115,79 @@
       }
 
       if (searchQueries.length > 0) {
-        // Emit each real search query with webSearch=true flag
         searchQueries.forEach(q => emitQuery(q, 'ChatGPT', true));
       } else if (userQuery) {
-        // Fallback: emit user query if no tool queries found
         emitQuery(userQuery, 'ChatGPT', false);
       }
     } catch (_) {}
+  }
+
+  // ── Claude.ai SSE tap — extracts web_search tool queries ──────────────────
+  async function tapClaudeStream(clonedRes, requestBody) {
+    const webSearchQueries = [];
+    let userQuery = null;
+    let pendingToolName = null;
+    let pendingJsonBuf = '';
+
+    // Try to grab user message from the request body as fallback
+    if (requestBody && typeof requestBody === 'string') {
+      userQuery = extractClaudeQuery(requestBody);
+    }
+
+    try {
+      const reader = clonedRes.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const data = line.slice(6).trim();
+          if (!data) continue;
+          try {
+            const d = JSON.parse(data);
+
+            // Detect tool_use block start → remember name
+            if (d.type === 'content_block_start' && d.content_block?.type === 'tool_use') {
+              pendingToolName = d.content_block.name || null;
+              pendingJsonBuf = '';
+            }
+
+            // Accumulate tool input JSON
+            if (d.type === 'content_block_delta' && d.delta?.type === 'input_json_delta') {
+              pendingJsonBuf += d.delta.partial_json || '';
+            }
+
+            // Tool block closed — parse accumulated JSON
+            if (d.type === 'content_block_stop' && pendingToolName) {
+              if (pendingToolName === 'web_search' && pendingJsonBuf) {
+                try {
+                  const input = JSON.parse(pendingJsonBuf);
+                  const q = input.query || input.q || input.search_query;
+                  if (typeof q === 'string' && q.trim().length > 1) {
+                    webSearchQueries.push(q.trim());
+                  }
+                } catch (_) {}
+              }
+              pendingToolName = null;
+              pendingJsonBuf = '';
+            }
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+
+    if (webSearchQueries.length > 0) {
+      webSearchQueries.forEach(q => emitQuery(q, 'Claude', true));
+    } else if (userQuery) {
+      emitQuery(userQuery, 'Claude', false);
+    }
   }
 
   // ── Perplexity query extraction ────────────────────────────────────────────
@@ -138,11 +199,10 @@
     return null;
   }
 
-  // ── Claude.ai query extraction ─────────────────────────────────────────────
+  // ── Claude.ai user query extraction (fallback) ─────────────────────────────
   function extractClaudeQuery(bodyStr) {
     try {
       const b = JSON.parse(bodyStr);
-      // Claude uses different body shapes
       if (b.prompt && typeof b.prompt === 'string') return b.prompt.trim();
       if (Array.isArray(b.messages)) {
         for (const m of [...b.messages].reverse()) {
@@ -169,7 +229,6 @@
       for (const c of candidates) {
         if (typeof c === 'string' && c.trim().length > 2 && c.length < 500) return c.trim();
       }
-      // Deep search
       return deepFind(b, 0);
     } catch (_) {}
     return null;

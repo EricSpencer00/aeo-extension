@@ -1,3 +1,13 @@
+// Open popup as persistent window when icon is clicked
+chrome.action.onClicked.addListener(() => {
+  chrome.windows.create({
+    url: chrome.runtime.getURL('popup.html'),
+    type: 'popup',
+    width: 700,
+    height: 800
+  });
+});
+
 // Receive queries forwarded by content scripts and persist them
 chrome.runtime.onMessage.addListener((message, sender) => {
   if (message.type === 'QUERY_DETECTED') {
