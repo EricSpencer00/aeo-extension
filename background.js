@@ -16,11 +16,11 @@ chrome.action.onClicked.addListener((tab) => {
 // Receive queries forwarded by content scripts and persist them
 chrome.runtime.onMessage.addListener((message, sender) => {
   if (message.type === 'QUERY_DETECTED') {
-    saveQuery(message.query, message.source, message.webSearch === true);
+    saveQuery(message.query, message.source, message.webSearch === true, message.userQuery || null);
   }
 });
 
-function saveQuery(query, source, webSearch = false) {
+function saveQuery(query, source, webSearch = false, userQuery = null) {
   if (!query || typeof query !== 'string') return;
   const q = query.trim();
   if (q.length < 2 || q.length > 1000) return;
@@ -41,7 +41,7 @@ function saveQuery(query, source, webSearch = false) {
     );
     if (dupe) return;
 
-    queries.push({ query: q, source, timestamp: now, webSearch });
+    queries.push({ query: q, source, timestamp: now, webSearch, userQuery });
 
     // Cap at 500
     if (queries.length > 500) queries.shift();

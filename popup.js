@@ -2,167 +2,146 @@ let allQueries = [];
 let activeFilters = new Set();
 let searchTerm = '';
 
-// ── Controls ─────────────────────────────────────────────────────────────────
+// ── Controls ──────────────────────────────────────────────────────────────
 
 document.getElementById('clearBtn').addEventListener('click', () => {
   if (confirm('Clear all captured queries?')) {
     chrome.storage.local.set({ queries: [] });
     allQueries = [];
-    renderAll();
+    render();
   }
 });
-
 document.getElementById('exportBtn').addEventListener('click', exportCSV);
-
-document.getElementById('searchInput').addEventListener('input', (e) => {
+document.getElementById('searchInput').addEventListener('input', e => {
   searchTerm = e.target.value.toLowerCase().trim();
-  renderAll();
+  render();
 });
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────
 
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
+function esc(t) {
+  const d = document.createElement('div');
+  d.textContent = t;
+  return d.innerHTML;
 }
 
-function highlightMatch(text, term) {
-  if (!term) return escapeHtml(text);
-  const escaped = escapeHtml(text);
-  const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return escaped.replace(new RegExp(`(${escapedTerm})`, 'gi'), '<mark>$1</mark>');
+function highlight(text, term) {
+  if (!term) return esc(text);
+  const e = esc(text);
+  const re = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return e.replace(new RegExp(`(${re})`, 'gi'), '<mark>$1</mark>');
 }
 
-function formatTime(timestamp) {
-  const now = new Date();
-  const date = new Date(timestamp);
-  const diffMs = now - date;
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-
-  if (diffMins < 1) return 'just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return date.toLocaleDateString();
+function timeAgo(ts) {
+  const d = Math.floor((Date.now() - ts) / 1000);
+  if (d < 60) return 'just now';
+  if (d < 3600) return `${Math.floor(d/60)}m ago`;
+  if (d < 86400) return `${Math.floor(d/3600)}h ago`;
+  if (d < 604800) return `${Math.floor(d/86400)}d ago`;
+  return new Date(ts).toLocaleDateString();
 }
 
-function dayKey(ts) {
-  const d = new Date(ts);
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-}
+function dayKey(ts) { const d = new Date(ts); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; }
 
 function dayLabel(ts) {
-  const today = new Date();
-  const yesterday = new Date(today);
-  yesterday.setDate(today.getDate() - 1);
+  const today = new Date(), yest = new Date(today);
+  yest.setDate(today.getDate() - 1);
   if (dayKey(ts) === dayKey(today)) return 'Today';
-  if (dayKey(ts) === dayKey(yesterday)) return 'Yesterday';
-  return new Date(ts).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+  if (dayKey(ts) === dayKey(yest)) return 'Yesterday';
+  return new Date(ts).toLocaleDateString(undefined, { weekday:'long', month:'short', day:'numeric' });
 }
 
-function getSourceColor(source) {
-  const colors = {
-    'ChatGPT': '#10a981',
-    'Claude': '#f97316',
-    'Perplexity': '#3b82f6',
-    'Google Gemini': '#ea4335',
-    'Microsoft Copilot': '#00a4ef',
-    'Unknown': '#6b7280'
-  };
-  return colors[source] || colors['Unknown'];
+const SOURCE_COLORS = {
+  'ChatGPT':          '#059669',
+  'Claude':           '#ea580c',
+  'Perplexity':       '#2563eb',
+  'Google Gemini':    '#dc2626',
+  'Microsoft Copilot':'#0284c7',
+};
+function srcColor(s) { return SOURCE_COLORS[s] || '#52525b'; }
+
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2000);
 }
 
-function showToast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 2000);
-}
-
-// ── Filtered list ─────────────────────────────────────────────────────────────
+// ── Filter + render ───────────────────────────────────────────────────────
 
 function getFiltered() {
   let list = allQueries;
-  if (activeFilters.size > 0) {
-    list = list.filter(q => activeFilters.has(q.source));
-  }
-  if (searchTerm) {
-    list = list.filter(q =>
-      q.query.toLowerCase().includes(searchTerm) ||
-      q.source.toLowerCase().includes(searchTerm)
-    );
-  }
+  if (activeFilters.size > 0) list = list.filter(q => activeFilters.has(q.source));
+  if (searchTerm) list = list.filter(q =>
+    q.query.toLowerCase().includes(searchTerm) ||
+    (q.userQuery || '').toLowerCase().includes(searchTerm) ||
+    q.source.toLowerCase().includes(searchTerm)
+  );
   return list;
 }
 
-// ── Render ────────────────────────────────────────────────────────────────────
-
-function renderAll() {
+function render() {
   updateFilters();
-  renderQueries();
+  renderFeed();
 }
 
-function renderQueries() {
-  const content = document.getElementById('content');
+function renderFeed() {
+  const feed = document.getElementById('feed');
   const filtered = getFiltered().slice().reverse();
 
   if (filtered.length === 0) {
-    const icon = (searchTerm || activeFilters.size > 0) ? '🔍' : '🤖';
-    const title = searchTerm ? 'No matches found'
-      : activeFilters.size > 0 ? 'No queries for selected sources'
-      : 'No queries captured yet';
-    const body = searchTerm
-      ? `No queries match "<strong>${escapeHtml(searchTerm)}</strong>"`
-      : activeFilters.size > 0 ? 'Try selecting a different source filter.'
-      : 'Open ChatGPT, Claude, Perplexity, or Gemini<br>and ask a question to start capturing.';
-
-    content.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-icon">${icon}</div>
-        <h3>${title}</h3>
-        <p>${body}</p>
-      </div>
-    `;
+    const noData = !allQueries.length;
+    feed.innerHTML = `
+      <div class="empty">
+        <div class="empty-icon">${noData ? '🤖' : '🔍'}</div>
+        <h3>${noData ? 'No queries yet' : 'No matches'}</h3>
+        <p>${noData
+          ? 'Open ChatGPT, Claude, Perplexity, or Gemini<br>and ask something to start capturing.'
+          : searchTerm ? `Nothing matches "<strong>${esc(searchTerm)}</strong>"` : 'Try a different filter.'
+        }</p>
+      </div>`;
     return;
   }
 
-  // Group by day
+  // group by day
   const groups = [];
-  const groupMap = {};
+  const map = {};
   for (const q of filtered) {
     const k = dayKey(q.timestamp);
-    if (!groupMap[k]) {
-      const g = { label: dayLabel(q.timestamp), items: [] };
-      groupMap[k] = g;
-      groups.push(g);
-    }
-    groupMap[k].items.push(q);
+    if (!map[k]) { map[k] = { label: dayLabel(q.timestamp), items: [] }; groups.push(map[k]); }
+    map[k].items.push(q);
   }
 
   let html = '';
   for (const g of groups) {
-    html += `<div class="date-group-label">${g.label}</div>`;
+    html += `<div class="day-label">${g.label}</div>`;
     for (const q of g.items) {
-      const safeQuery = escapeHtml(q.query).replace(/'/g, '&#39;');
+      const safe = esc(q.query).replace(/'/g, '&#39;');
+      const isWeb = !!q.webSearch;
+
       html += `
-        <div class="query-item">
-          <div class="query-header">
-            <span class="query-source" style="background:${getSourceColor(q.source)}">${q.source}</span>
-            ${q.webSearch ? '<span class="web-badge">🔍 web search</span>' : ''}
+        <div class="card${isWeb ? ' is-web' : ''}">
+          <div class="card-top">
+            <span class="source-badge" style="background:${srcColor(q.source)}">${q.source}</span>
+            ${isWeb ? `<span class="web-badge">🔍 web search</span>` : ''}
           </div>
-          <div class="query-text">${highlightMatch(q.query, searchTerm)}</div>
-          <div class="query-footer">
-            <span class="query-time">${formatTime(q.timestamp)}</span>
-            <button class="copy-btn" onclick="copyQuery(this, '${safeQuery}')">Copy</button>
+
+          <div class="card-query">${highlight(q.query, searchTerm)}</div>
+
+          ${isWeb && q.userQuery ? `
+            <div class="card-context">
+              <span class="context-label">You asked:</span>
+              <span class="context-text">${highlight(q.userQuery, searchTerm)}</span>
+            </div>` : ''}
+
+          <div class="card-footer">
+            <span class="card-time">${timeAgo(q.timestamp)}</span>
+            <button class="copy-btn" onclick="copyQ(this,'${safe}')">Copy</button>
           </div>
-        </div>
-      `;
+        </div>`;
     }
   }
-  content.innerHTML = html;
+  feed.innerHTML = html;
 }
 
 function updateFilters() {
@@ -170,15 +149,13 @@ function updateFilters() {
   const counts = {};
   allQueries.forEach(q => { counts[q.source] = (counts[q.source] || 0) + 1; });
 
-  document.getElementById('filterContainer').innerHTML = sources.map(source => {
-    const active = activeFilters.has(source);
-    const color = getSourceColor(source);
-    return `
-      <button class="filter-tag" onclick="toggleFilter('${source}')"
-              style="border-color:${color};color:${active ? 'white' : color};background:${active ? color : 'white'}">
-        ${source} <span style="opacity:0.65;font-size:10px">${counts[source]}</span>
-      </button>
-    `;
+  document.getElementById('filterContainer').innerHTML = sources.map(src => {
+    const on = activeFilters.has(src);
+    const c = srcColor(src);
+    return `<button class="chip" onclick="toggleFilter('${src}')"
+      style="border-color:${c};color:${on?'#fff':c};background:${on?c:'#fff'}">
+      ${src} <span style="opacity:.65;font-size:10px;font-weight:400">${counts[src]}</span>
+    </button>`;
   }).join('');
 
   updateStats();
@@ -188,64 +165,56 @@ function updateStats() {
   const todayK = dayKey(Date.now());
   const counts = {};
   allQueries.forEach(q => { counts[q.source] = (counts[q.source] || 0) + 1; });
-  const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+  const top = Object.entries(counts).sort((a,b) => b[1]-a[1])[0];
 
-  document.getElementById('totalCount').textContent = allQueries.length;
-  document.getElementById('webSearchCount').textContent = allQueries.filter(q => q.webSearch).length;
-  document.getElementById('todayCount').textContent = allQueries.filter(q => dayKey(q.timestamp) === todayK).length;
-  document.getElementById('topSourceName').textContent = top ? top[0].split(' ')[0] : '—';
+  document.getElementById('statTotal').textContent = allQueries.length;
+  document.getElementById('statWeb').textContent   = allQueries.filter(q => q.webSearch).length;
+  document.getElementById('statToday').textContent = allQueries.filter(q => dayKey(q.timestamp) === todayK).length;
+  document.getElementById('statTop').textContent   = top ? top[0].split(' ')[0] : '—';
 }
 
-// ── Actions ───────────────────────────────────────────────────────────────────
+// ── Actions ───────────────────────────────────────────────────────────────
 
-function toggleFilter(source) {
-  activeFilters.has(source) ? activeFilters.delete(source) : activeFilters.add(source);
-  renderAll();
+function toggleFilter(src) {
+  activeFilters.has(src) ? activeFilters.delete(src) : activeFilters.add(src);
+  render();
 }
 
-function copyQuery(btn, text) {
-  const decoded = text.replace(/&#39;/g, "'");
-  navigator.clipboard.writeText(decoded).then(() => {
+function copyQ(btn, text) {
+  navigator.clipboard.writeText(text.replace(/&#39;/g, "'")).then(() => {
     btn.textContent = 'Copied!';
     btn.classList.add('copied');
-    showToast('Copied to clipboard');
-    setTimeout(() => {
-      btn.textContent = 'Copy';
-      btn.classList.remove('copied');
-    }, 1500);
+    toast('Copied to clipboard');
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
   });
 }
 
 function exportCSV() {
-  if (allQueries.length === 0) {
-    showToast('No queries to export');
-    return;
-  }
-  let csv = 'Source,Query,Web Search,Timestamp\n';
+  if (!allQueries.length) { toast('Nothing to export'); return; }
+  let csv = 'Source,Query,User Query,Web Search,Timestamp\n';
   allQueries.forEach(q => {
-    const query = `"${q.query.replace(/"/g, '""')}"`;
-    csv += `${q.source},${query},${q.webSearch ? 'yes' : 'no'},${new Date(q.timestamp).toISOString()}\n`;
+    const query = `"${q.query.replace(/"/g,'""')}"`;
+    const uq = `"${(q.userQuery||'').replace(/"/g,'""')}"`;
+    csv += `${q.source},${query},${uq},${q.webSearch?'yes':'no'},${new Date(q.timestamp).toISOString()}\n`;
   });
-  const blob = new Blob([csv], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `aeo-queries-${new Date().toISOString().split('T')[0]}.csv`;
+  const a = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(new Blob([csv], {type:'text/csv'})),
+    download: `aeo-queries-${new Date().toISOString().split('T')[0]}.csv`
+  });
   a.click();
-  URL.revokeObjectURL(url);
-  showToast('Exported!');
+  toast('Exported!');
 }
 
-// ── Storage ───────────────────────────────────────────────────────────────────
+// ── Storage ───────────────────────────────────────────────────────────────
 
-chrome.storage.local.get('queries', (result) => {
-  allQueries = result.queries || [];
-  renderAll();
+chrome.storage.local.get('queries', r => {
+  allQueries = r.queries || [];
+  render();
 });
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes.queries) {
     allQueries = changes.queries.newValue || [];
-    renderAll();
+    render();
   }
 });

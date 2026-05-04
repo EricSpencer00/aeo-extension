@@ -18,6 +18,7 @@ window.addEventListener('message', (event) => {
       query,
       source: msg.source || detectSource(),
       webSearch: !!msg.webSearch,
+      userQuery: msg.userQuery || null,
     });
   }
 });
