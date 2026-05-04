@@ -9,9 +9,15 @@
       box-sizing: border-box;
     }
 
+    html {
+      height: 100%;
+    }
+
     body {
-      width: 680px;
-      min-height: 600px;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       background: #f0f2f8;
       color: #1a1a2e;
@@ -192,7 +198,7 @@
 
     /* CONTENT */
     .content {
-      max-height: 560px;
+      flex: 1;
       overflow-y: auto;
       padding: 12px 14px;
     }

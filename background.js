@@ -1,11 +1,8 @@
-// Open popup as persistent window when icon is clicked
-chrome.action.onClicked.addListener(() => {
-  chrome.windows.create({
-    url: chrome.runtime.getURL('popup.html'),
-    type: 'popup',
-    width: 700,
-    height: 800
-  });
+// Toggle side panel when extension icon is clicked
+chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+
+chrome.action.onClicked.addListener((tab) => {
+  chrome.sidePanel.open({ windowId: tab.windowId }).catch(() => {});
 });
 
 // Receive queries forwarded by content scripts and persist them
