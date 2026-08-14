@@ -1,123 +1,71 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      max-width: 600px;
-      margin: 20px auto;
-      padding: 20px;
-      color: #333;
-    }
-
-    h1 {
-      color: #667eea;
-      border-bottom: 2px solid #667eea;
-      padding-bottom: 10px;
-    }
-
-    .setting {
-      margin: 20px 0;
-      padding: 15px;
-      background: #f9f9f9;
-      border-radius: 6px;
-      border: 1px solid #e0e0e0;
-    }
-
-    label {
-      display: block;
-      margin-bottom: 8px;
-      font-weight: 500;
-    }
-
-    input[type="number"],
-    select {
-      width: 100%;
-      padding: 8px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      font-size: 14px;
-    }
-
-    small {
-      display: block;
-      color: #999;
-      margin-top: 4px;
-    }
-
-    button {
-      padding: 10px 20px;
-      background: #667eea;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 14px;
-      margin-top: 20px;
-    }
-
-    button:hover {
-      background: #764ba2;
-    }
-
-    .success {
-      color: #10a981;
-      margin-top: 10px;
-      display: none;
-    }
-
-    .source-list {
-      list-style: none;
-      padding: 0;
-    }
-
-    .source-list li {
-      padding: 8px;
-      background: white;
-      margin: 8px 0;
-      border-radius: 4px;
-      border: 1px solid #e0e0e0;
-    }
-
-    .source-list input[type="checkbox"] {
-      margin-right: 8px;
-    }
-  </style>
+<meta charset="utf-8">
+<title>AEO Queries — Options</title>
+<style>
+  :root { --bg:#0e1116; --panel:#161b22; --line:#262d38; --text:#e6edf3; --muted:#8b97a8; --accent:#4ea3ff; }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#fff; --panel:#f6f8fa; --line:#d8dee4; --text:#1f2328; --muted:#636c76; }
+  }
+  body {
+    margin: 0; padding: 34px 22px; background: var(--bg); color: var(--text);
+    font: 14px/1.6 ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 620px; margin: 0 auto; }
+  h1 { font-size: 19px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 26px; font-size: 13px; }
+  section { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); padding: 16px 18px; margin-bottom: 14px; }
+  h2 { font-size: 14px; margin: 0 0 8px; }
+  p { margin: 0 0 10px; font-size: 13px; color: var(--muted); }
+  label.row { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; color: var(--text); }
+  input[type="checkbox"] { margin-top: 3px; }
+  ul { margin: 6px 0 0; padding-left: 20px; font-size: 13px; color: var(--muted); }
+  li { margin-bottom: 4px; }
+  .status { color: var(--accent); font-size: 12.5px; height: 18px; }
+  button {
+    padding: 7px 13px; border-radius: 7px; border: 1px solid var(--line);
+    background: transparent; color: var(--text); font: inherit; font-size: 13px; cursor: pointer;
+  }
+  button:hover { border-color: #f85149; color: #f85149; }
+</style>
 </head>
 <body>
-  <h1>AEO Queries Settings</h1>
+<div class="wrap">
+  <h1>AEO Queries</h1>
+  <p class="sub">Shows the exact search queries AI assistants run for your prompts.</p>
 
-  <div class="setting">
-    <label for="maxQueries">Maximum Queries to Store:</label>
-    <input type="number" id="maxQueries" min="50" max="1000" value="500">
-    <small>How many recent queries to keep (older ones will be deleted)</small>
-  </div>
+  <section>
+    <h2>Where your data lives</h2>
+    <p>Captured prompts and queries are written to this browser's local extension storage and nowhere else. There is no account, no server, and no analytics. Uninstalling the extension deletes everything.</p>
+  </section>
 
-  <div class="setting">
-    <label>Monitor These AI Interfaces:</label>
-    <ul class="source-list">
-      <li><label><input type="checkbox" class="source" value="ChatGPT" checked> ChatGPT</label></li>
-      <li><label><input type="checkbox" class="source" value="Claude" checked> Claude</label></li>
-      <li><label><input type="checkbox" class="source" value="Perplexity" checked> Perplexity</label></li>
-      <li><label><input type="checkbox" class="source" value="Google Gemini" checked> Google Gemini</label></li>
-      <li><label><input type="checkbox" class="source" value="Microsoft Copilot" checked> Microsoft Copilot</label></li>
+  <section>
+    <h2>Supported sites</h2>
+    <ul>
+      <li>Perplexity — every reformulated query it issues, verified against live traffic</li>
+      <li>Claude (claude.ai) — each web_search tool call</li>
+      <li>ChatGPT — search queries from its browsing tool, when signed in</li>
+      <li>Google Gemini and Microsoft Copilot — best effort</li>
     </ul>
-  </div>
+    <p style="margin-top:10px">Signed-out ChatGPT reports only that it searched; OpenAI does not send the query text to the page, so no extension can recover it there.</p>
+  </section>
 
-  <div class="setting">
-    <label for="autoExport">Auto-Export Data:</label>
-    <select id="autoExport">
-      <option value="never">Never</option>
-      <option value="daily">Daily</option>
-      <option value="weekly">Weekly</option>
-    </select>
-    <small>Automatically export captured queries (downloads to your computer)</small>
-  </div>
+  <section>
+    <h2>Debug logging</h2>
+    <label class="row">
+      <input type="checkbox" id="debug">
+      <span>Log capture activity to the page console. Useful when a site changes its protocol and queries stop appearing.</span>
+    </label>
+    <div class="status" id="status"></div>
+  </section>
 
-  <button id="save">Save Settings</button>
-  <div class="success" id="success">✓ Settings saved!</div>
-
-  <script src="options.js"></script>
+  <section>
+    <h2>Stored data</h2>
+    <p id="stats">…</p>
+    <button id="clear">Delete everything</button>
+  </section>
+</div>
+<script src="options.js"></script>
 </body>
 </html>

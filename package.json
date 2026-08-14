@@ -1,6 +1,6 @@
 {
   "name": "aeo-extension",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Chrome extension to capture and display search queries from AI interfaces (ChatGPT, Claude, Perplexity, etc.)",
   "author": "Eric Spencer <ericspencer1450@gmail.com>",
   "license": "MIT",
@@ -9,9 +9,12 @@
     "url": "https://github.com/EricSpencer00/aeo-extension.git"
   },
   "scripts": {
-    "build": "echo 'Extension ready for Chrome Web Store'",
-    "test": "echo 'Run extension in development mode'",
-    "pack": "zip -r aeo-extension.zip . -x 'node_modules/*' '.git/*' '*.zip'"
+    "test": "node tools/test-parsers.mjs",
+    "test:e2e": "node tools/test-e2e.mjs",
+    "test:ui": "node tools/test-ui.mjs",
+    "test:all": "node tools/test-parsers.mjs && node tools/test-ui.mjs && node tools/test-e2e.mjs",
+    "test:live": "node tools/test-live.mjs",
+    "pack": "node tools/pack.mjs"
   },
   "keywords": [
     "aeo",

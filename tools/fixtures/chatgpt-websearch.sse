@@ -1,0 +1,11 @@
+event: delta
+data: {"v": {"message": {"id": "m1", "author": {"role": "user"}, "content": {"content_type": "text", "parts": ["best noise cancelling headphones for travel 2026"]}}, "conversation_id": "c1"}, "c": 0}
+
+data: {"message": {"id": "m2", "author": {"role": "assistant", "name": null}, "create_time": 1786670000.0, "content": {"content_type": "code", "language": "unknown", "text": "{\"search_query\": [{\"q\": \"best noise cancelling headphones travel 2026\", \"recency\": null, \"domains\": null}, {\"q\": \"quietest ANC headphones long haul flight review\"}], \"response_length\": \"medium\"}"}, "recipient": "web.run", "metadata": {"message_type": "next"}}, "conversation_id": "c1"}
+
+data: {"message": {"id": "m3", "author": {"role": "tool", "name": "web.run"}, "content": {"content_type": "webpages_extended", "domains": [{"title": "Best ANC headphones 2026", "url": "https://example.com/a"}]}, "metadata": {"search_model_queries": {"queries": ["best noise cancelling headphones travel 2026", "top rated ANC over-ear headphones flights"]}, "search_result_groups": [{"type": "search_result_group", "domain": "example.com", "search_query": "noise cancelling headphones best for airplanes", "entries": []}]}}, "conversation_id": "c1"}
+
+data: {"message": {"id": "m4", "author": {"role": "assistant"}, "content": {"content_type": "text", "parts": ["Here are the best options..."]}, "metadata": {}}, "conversation_id": "c1"}
+
+data: [DONE]
+

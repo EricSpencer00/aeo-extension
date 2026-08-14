@@ -1,34 +1,33 @@
-// Load saved settings
-chrome.storage.sync.get({
-  maxQueries: 500,
-  enabledSources: ['ChatGPT', 'Claude', 'Perplexity', 'Google Gemini', 'Microsoft Copilot'],
-  autoExport: 'never'
-}, (items) => {
-  document.getElementById('maxQueries').value = items.maxQueries;
-  document.getElementById('autoExport').value = items.autoExport;
+const debugEl = document.getElementById('debug');
+const statusEl = document.getElementById('status');
+const statsEl = document.getElementById('stats');
 
-  // Check enabled sources
-  document.querySelectorAll('.source').forEach(checkbox => {
-    checkbox.checked = items.enabledSources.includes(checkbox.value);
+chrome.storage.local.get(['debug', 'turns', 'diagnostics'], (d) => {
+  debugEl.checked = !!d.debug;
+  showStats(d.turns || [], d.diagnostics || []);
+});
+
+debugEl.addEventListener('change', () => {
+  chrome.storage.local.set({ debug: debugEl.checked }, () => {
+    statusEl.textContent = debugEl.checked
+      ? 'Debug logging on — reload the AI tab to apply.'
+      : 'Debug logging off.';
+    setTimeout(() => { statusEl.textContent = ''; }, 3000);
   });
 });
 
-// Save settings
-document.getElementById('save').addEventListener('click', () => {
-  const maxQueries = parseInt(document.getElementById('maxQueries').value) || 500;
-  const autoExport = document.getElementById('autoExport').value;
-  const enabledSources = Array.from(document.querySelectorAll('.source:checked'))
-    .map(cb => cb.value);
-
-  chrome.storage.sync.set({
-    maxQueries,
-    enabledSources,
-    autoExport
-  }, () => {
-    const successMsg = document.getElementById('success');
-    successMsg.style.display = 'block';
-    setTimeout(() => {
-      successMsg.style.display = 'none';
-    }, 2000);
+document.getElementById('clear').addEventListener('click', () => {
+  chrome.storage.local.set({ turns: [], diagnostics: [] }, () => {
+    showStats([], []);
+    statusEl.textContent = 'Deleted.';
+    setTimeout(() => { statusEl.textContent = ''; }, 3000);
   });
 });
+
+function showStats(turns, diagnostics) {
+  const queries = turns.reduce((a, t) => a + t.queries.length, 0);
+  statsEl.textContent =
+    `${queries} search quer${queries === 1 ? 'y' : 'ies'} across ${turns.length} prompt` +
+    `${turns.length === 1 ? '' : 's'}, and ${diagnostics.length} diagnostic record` +
+    `${diagnostics.length === 1 ? '' : 's'}.`;
+}

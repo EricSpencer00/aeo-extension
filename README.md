@@ -1,115 +1,108 @@
-# AEO Queries - Chrome Extension
+# AEO Queries
 
-See what ChatGPT, Claude, Perplexity, and other AI interfaces are actually searching for. Perfect for AEO (AI Engine Optimization) and SEO research.
+A Chrome extension that shows the exact search queries AI assistants run when they answer your prompts.
 
-## Features
+Ask Perplexity to compare two products and it does not search for your sentence. It rewrites it into several precise queries and searches those:
 
-- **Real-time Query Capture**: Automatically captures search queries made by AI interfaces
-- **Multi-AI Support**: Works with ChatGPT, Claude, Perplexity, Google Gemini, Microsoft Copilot
-- **Easy Filtering**: Filter results by AI source
-- **Export to CSV**: Download all captured queries for analysis
-- **Query Statistics**: See breakdown of queries by source
-- **No Data Logging**: All data stored locally on your device
+```
+prompt   compare the warranty and battery life of the Sony WH-1000XM6 and the
+         Bose QuietComfort Ultra, and which retailer is cheapest right now
 
-## How It Works
+searches Sony WH-1000XM6 vs Bose QuietComfort Ultra warranty
+         Sony WH-1000XM6 vs Bose QuietComfort Ultra battery life
+         cheapest retailer for Sony WH-1000XM6 and Bose QuietComfort Ultra
+         site:sony.com WH-1000XM6 warranty limited warranty United States battery 30 40 hours
+         site:bose.com QuietComfort Ultra Headphones warranty United States battery life 24 hours
+         Sony WH-1000XM6 price Bose QuietComfort Ultra price Amazon Walmart Best Buy August 2026
+         Sony WH-1000XM6 "1-year" limited warranty United States
+         Bose QuietComfort Ultra Headphones "1-year limited warranty"
+         Sony WH-1000XM6 buy price Amazon Best Buy Walmart
+```
 
-When you use an AI chat interface to ask a question, the AI often needs to search the web to provide current information. This extension captures those search queries in real-time, showing you:
+Those nine strings are the ones that decide which pages the model reads, and
+therefore which brands it names in the answer. They are what you optimise for.
+This extension records them as they happen.
 
-1. What queries the AI is making
-2. Which AI interface made the query
-3. When the query was made
+## Supported sites
 
-This helps you understand what keywords and search patterns AI uses, which is valuable for SEO optimization.
+| Site | What it captures |
+|---|---|
+| Perplexity | Every query it issues, including reformulations and `site:` operators |
+| Claude (claude.ai) | Each `web_search` tool call |
+| ChatGPT | Browsing-tool queries, when signed in |
+| Gemini, Copilot | Best effort |
 
-## Installation
+Signed-out ChatGPT is the one gap, and it is OpenAI's: the anonymous web app
+reports only "Searching 7 websites" and never sends the query text to the
+browser. No extension can recover what the server does not deliver. Sign in and
+the queries come through.
 
-### Option 1: Install from Chrome Web Store (Coming Soon)
-Soon available on the [Chrome Web Store](https://chromewebstore.google.com)
+## Install
 
-### Option 2: Manual Installation (Developer Mode)
+Until it is on the Chrome Web Store:
 
-1. Clone or download this repository
-2. Open Chrome and go to `chrome://extensions/`
-3. Enable **Developer mode** (toggle in top right)
-4. Click **Load unpacked**
-5. Select the `aeo-extension` folder
-6. The extension appears in your extensions list!
+1. Download or clone this repository.
+2. Open `chrome://extensions` and turn on Developer mode.
+3. Choose "Load unpacked" and select this folder.
+4. Open an AI site, ask something that needs current information, and click the
+   extension icon to open the side panel.
 
-## Usage
+Full steps, including Brave and Edge, are in [INSTALL.md](INSTALL.md).
 
-1. Click the **AEO Queries** icon in your Chrome toolbar
-2. Open your favorite AI chat (ChatGPT, Claude, Perplexity, etc.)
-3. Ask a question - the extension will capture any searches the AI makes
-4. Return to the popup to see captured queries
-5. Use filters to view queries from specific AI services
-6. Click **Copy** to copy any query, or **Export CSV** to download all
+## Using it
 
-## Settings
+The side panel has three views.
 
-Click **Settings** in the popup to:
-- Adjust maximum number of stored queries
-- Enable/disable monitoring for specific AI services
-- Configure auto-export options
+- **Timeline** — every prompt with the queries it triggered, newest first.
+  Filter by text or by assistant.
+- **Top queries** — the same queries ranked by how often they came up. This is
+  the list to hand to whoever writes your content.
+- **Status** — per-site capture counts, plus any response the extension read
+  but could not find queries in. If a site changes its protocol, it shows up
+  here first.
+
+"Export CSV" gives you `timestamp, source, prompt, search_query` for a
+spreadsheet. "Copy queries" puts the currently visible queries on the clipboard.
 
 ## Privacy
 
-- **100% Local**: All captured data is stored locally on your device in Chrome's storage
-- **No Servers**: No data is sent to any external servers
-- **No Tracking**: We don't track your usage or queries
-- **Clear Anytime**: Delete all captured queries with one click
+Everything stays in your browser's local extension storage. No account, no
+server, no analytics, no network requests of its own. Uninstalling deletes it
+all. See [PRIVACY.md](PRIVACY.md).
 
-## Troubleshooting
+## How it works
 
-**Queries not appearing?**
-- Make sure you're on a supported AI interface
-- Check that the extension is enabled
-- Try refreshing the page
+A `MAIN`-world content script runs at `document_start`, before any page script,
+and wraps `fetch`, `XMLHttpRequest` and `EventSource`. Response bodies are read
+through a pass-through stream: the extension is the only reader of the original
+body and re-emits every chunk untouched, so the page receives exactly what the
+server sent. Queries are recovered by recognising the *shapes* that carry an
+issued search — Anthropic `tool_use` blocks, OpenAI `web.run` arguments and
+`search_model_queries`, Perplexity `queries_payload` — rather than one hard-coded
+path per site, so a redesign that moves a field does not silently switch
+capture off.
 
-**Want to clear data?**
-- Open the extension popup and click "Clear All"
-
-**Export not working?**
-- Make sure you have captured at least one query
-- Check your download folder
-
-## Supported AI Interfaces
-
-- ✅ ChatGPT (chatgpt.com, chat.openai.com)
-- ✅ Claude (claude.ai)
-- ✅ Perplexity (perplexity.ai)
-- ✅ Google Gemini (gemini.google.com)
-- ✅ Microsoft Copilot (copilot.microsoft.com)
-
-More coming soon!
+Architecture and the test strategy are described in
+[DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## Development
 
 ```bash
-# Clone the repo
-git clone https://github.com/EricSpencer00/aeo-extension.git
-cd aeo-extension
-
-# Load in Chrome developer mode
-# chrome://extensions/ → Load unpacked → select folder
+npm test          # parser unit tests, incl. replay of a real captured stream
+npm run test:ui   # drives the side panel in Chrome and asserts on the DOM
+npm run test:e2e  # loads the extension and replays real AI streams at it
+npm run test:all  # all three
+npm run pack      # build the Chrome Web Store zip
 ```
 
-## Contributing
+Against a real site:
 
-Issues and pull requests welcome! Please include:
-- Description of the feature or bug
-- Steps to reproduce (for bugs)
-- Screenshots if helpful
+```bash
+node tools/test-live.mjs perplexity
+node tools/test-live.mjs claude      # prompts you to sign in, once
+node tools/test-live.mjs chatgpt
+```
 
-## License
+## Licence
 
-MIT License - see LICENSE file
-
-## Disclaimer
-
-This extension is for research and optimization purposes only. Always respect robots.txt and terms of service of websites. Use responsibly.
-
----
-
-Made with ❤️ for the SEO community.
-
-Questions? Open an issue on [GitHub](https://github.com/EricSpencer00/aeo-extension/issues)
+MIT. See [LICENSE](LICENSE).
