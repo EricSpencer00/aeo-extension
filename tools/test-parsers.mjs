@@ -136,6 +136,26 @@ check('ignores non-search tool calls', () => {
   eq(runStream('Claude', sse), []);
 });
 
+check('recovers queries from a real signed-in claude.ai stream', () => {
+  // Captured from claude.ai on a signed-in account (tool ids renamed). The
+  // live protocol matches the documented shape: a tool_use block named
+  // web_search whose arguments arrive as input_json_delta fragments.
+  const text = fs.readFileSync(path.join(FIX, 'claude-authed-real.sse'), 'utf8');
+  eq(runStream('Claude', text), [
+    'Vercel pricing 2026 Hobby plan limits',
+    'Netlify pricing 2026 free tier limits bandwidth build minutes',
+    'vercel.com pricing Hobby plan included usage limits fast data transfer active CPU',
+  ]);
+  assert(!/eyJ|sk-ant|Bearer /.test(text), 'fixture must not contain credentials');
+});
+
+check('matches the live claude.ai completion endpoint', () => {
+  assert(AEO.isInterestingRequest('Claude',
+    'https://claude.ai/api/organizations/11111111-1111-4111-8111-111111111111/chat_conversations/22222222-2222-4222-8222-222222222222/completion', 'POST'));
+  assert(!AEO.isInterestingRequest('Claude',
+    'https://claude.ai/api/organizations/11111111-1111-4111-8111-111111111111/chat_conversations_v2?limit=30', 'GET'));
+});
+
 check('extracts the human prompt from claude.ai request bodies', () => {
   eq(AEO.extractUserPrompt('Claude', JSON.stringify({ prompt: 'hello there' })), 'hello there');
   eq(
@@ -196,6 +216,25 @@ check('matches ChatGPT conversation endpoints incl. logged-out', () => {
   assert(AEO.isInterestingRequest('ChatGPT', 'https://chatgpt.com/unauth-mweb/conversation/updates?operationId=1', 'POST'));
   assert(!AEO.isInterestingRequest('ChatGPT', 'https://chatgpt.com/ces/v1/t', 'POST'));
   assert(!AEO.isInterestingRequest('ChatGPT', 'https://chatgpt.com/backend-api/f/conversation', 'GET'));
+  // Setup endpoints seen on a live signed-in session — no queries, and
+  // /conversation/init was large enough to record a useless diagnostic.
+  assert(!AEO.isInterestingRequest('ChatGPT', 'https://chatgpt.com/backend-anon/conversation/init', 'POST'));
+  assert(!AEO.isInterestingRequest('ChatGPT', 'https://chatgpt.com/backend-api/f/conversation/prepare', 'POST'));
+});
+
+check('recovers queries from a real signed-in ChatGPT stream', () => {
+  // Captured from chatgpt.com on a signed-in account, then scrubbed of ids and
+  // tokens. Both shapes below are what the live protocol actually sends:
+  // a search("...") code call addressed to web.run, and a tool message whose
+  // metadata carries search_model_queries.
+  const text = fs.readFileSync(path.join(FIX, 'chatgpt-authed-real.sse'), 'utf8');
+  const got = runStream('ChatGPT', text);
+  eq(got, [
+    'Search the web: best noise cancelling headphones for long flights in 2026',
+    'best noise cancelling headphones long flights 2026 Sony WH-1000XM6 Bose QuietComfort Ultra AirPods Max',
+    'Sony WH-1000XM6 battery 30 hours Bose QuietComfort Ultra headphones battery 24 hours AirPods Max USB-C battery 20 hours',
+  ]);
+  assert(!/eyJ|Bearer /.test(text), 'fixture must not contain credentials');
 });
 
 console.log('\nPerplexity — replayed from live capture');

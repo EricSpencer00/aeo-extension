@@ -426,7 +426,11 @@
         // and would otherwise register empty turns.
         return /\/rest\/sse\/|perplexity_ask/i.test(u);
       case 'ChatGPT':
-        return /\/(backend-api|backend-anon|unauth-mweb|api)\/.*conversation|\/conversation(\/|\?|$)/i.test(u);
+        // The answer stream only. /conversation/init, /prepare and /runtime are
+        // setup calls that carry no queries and would register empty turns.
+        if (/\/conversation\/(init|prepare|runtime|voice|textdocs)/i.test(u)) return false;
+        return /\/(backend-api|backend-anon|unauth-mweb|api)\/(f\/)?conversation(\?|$)/i.test(u) ||
+          /\/conversation\/updates(\?|$)/i.test(u);
       case 'Claude':
         return /\/completion|\/chat_conversations\/.*\/(completion|retry)|\/messages/i.test(u);
       case 'Google Gemini':

@@ -25,12 +25,15 @@ This extension records them as they happen.
 
 ## Supported sites
 
-| Site | What it captures |
-|---|---|
-| Perplexity | Every query it issues, including reformulations and `site:` operators |
-| Claude (claude.ai) | Each `web_search` tool call |
-| ChatGPT | Browsing-tool queries, when signed in |
-| Gemini, Copilot | Best effort |
+| Site | What it captures | Verified against |
+|---|---|---|
+| Perplexity | Every query it issues, including reformulations and `site:` operators | Live — 9 queries from one prompt |
+| Claude (claude.ai) | Each `web_search` tool call | Live, signed in — 3 queries from one prompt |
+| ChatGPT | Browsing-tool queries, when signed in | Live, signed in — 11 queries from one prompt |
+| Gemini, Copilot | Best effort | Not verified |
+
+Each row above was checked by loading the packaged extension into Chrome,
+asking the real site a real question, and reading what landed in storage.
 
 Signed-out ChatGPT is the one gap, and it is OpenAI's: the anonymous web app
 reports only "Searching 7 websites" and never sends the query text to the

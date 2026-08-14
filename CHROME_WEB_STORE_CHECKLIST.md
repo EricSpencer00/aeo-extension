@@ -5,14 +5,13 @@
 - [x] `manifest_version` is 3
 - [x] Version bumped (`2.0.0`) — the store rejects a re-upload of an existing version
 - [x] No `<all_urls>`, no `activeTab`, no `tabs`, no `scripting` permission
-- [x] Permissions limited to `storage` and `sidePanel`, plus six named hosts
+- [x] Permissions limited to `storage` and `sidePanel`, plus eight named hosts
 - [x] No localhost or `127.0.0.1` in the shipped manifest (`npm run pack` refuses it)
 - [x] No remote code: no `eval`, no `new Function`, no externally hosted scripts
 - [x] No analytics, telemetry or error reporting
 - [x] Icons at 16, 48 and 128 px
-- [x] `npm run test:all` green — 64 checks
-- [x] Packaged zip verified live on perplexity.ai before submission
-- [ ] Live verification on claude.ai and chatgpt.com signed in (`node tools/test-live.mjs claude`)
+- [x] `npm run test:all` green — 69 checks
+- [x] Packaged zip verified live on perplexity.ai, claude.ai and chatgpt.com, signed in
 
 ## Build the package
 

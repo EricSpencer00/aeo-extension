@@ -55,10 +55,18 @@ npm run test:e2e   # extension loaded in Chrome, real streams replayed at it
 npm run test:all
 ```
 
-`tools/fixtures/perplexity-multistep.json` is a verbatim capture of a real
-Perplexity answer stream with the twelve queries it issued. It is replayed
-byte-for-byte, so a parser change that would drop a query on the live site fails
-in CI-speed unit tests.
+Three fixtures are real captures rather than hand-written samples:
+
+- `perplexity-multistep.json` — a verbatim Perplexity answer stream with the
+  twelve queries it issued, replayed byte-for-byte.
+- `claude-authed-real.sse` — the `web_search` tool blocks from a signed-in
+  claude.ai completion stream, tool ids renamed.
+- `chatgpt-authed-real.sse` — the two query-carrying frames from a signed-in
+  ChatGPT stream, ids and tokens scrubbed.
+
+The two signed-in captures were scrubbed before being committed and the tests
+assert they contain no credentials. Together they mean a parser change that
+would drop a query on a live site fails in CI-speed unit tests.
 
 The end-to-end suite installs the extension through CDP's
 `Extensions.loadUnpacked` (returns the extension id, and starts the worker,

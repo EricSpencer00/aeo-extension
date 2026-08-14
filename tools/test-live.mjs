@@ -35,23 +35,40 @@ const SITES = {
     source: 'Claude',
     needsLogin: true,
     prompt: 'Search the web: what are the best answer engine optimization tools in 2026?',
-    loggedOut: (t) => /sign in|log in to claude|continue with google/i.test(t) && !/how can I help/i.test(t),
   },
   chatgpt: {
     url: 'https://chatgpt.com/',
     source: 'ChatGPT',
     needsLogin: true,
     prompt: 'Search the web: best answer engine optimization tools in 2026',
-    loggedOut: (t) => /log in|sign up for free/i.test(t),
   },
 };
 
 const COMPOSERS = [
   'div[contenteditable="true"]',
+  '.ProseMirror',
+  '[role="textbox"]',
   'textarea[placeholder]',
   'textarea',
   'input[type="search"]',
 ];
+
+// Finds the message box. offsetParent is deliberately not used: it is null for
+// anything inside a position:fixed container, which is how claude.ai lays its
+// composer out. Returns the matching selector, or null.
+const FIND_COMPOSER = `(() => {
+  for (const sel of ${JSON.stringify(COMPOSERS)}) {
+    for (const el of document.querySelectorAll(sel)) {
+      const r = el.getBoundingClientRect();
+      if (r.width < 80 || r.height < 10 || el.disabled) continue;
+      const visible = typeof el.checkVisibility === 'function'
+        ? el.checkVisibility({ visibilityProperty: true, contentVisibilityAuto: true })
+        : true;
+      if (visible) return sel;
+    }
+  }
+  return null;
+})()`;
 
 async function main() {
   const which = (process.argv[2] || 'perplexity').toLowerCase();
@@ -110,49 +127,51 @@ async function main() {
   });
   await sleep(7000);
 
-  const pageText = async () => {
-    const r = await page.send('Runtime.evaluate', {
-      expression: 'document.body.innerText.slice(0, 3000)', returnByValue: true,
-    });
-    return r.result.value || '';
+  // Presence of a usable composer is the signal that the app is both loaded
+  // and signed in. These SPAs render a marketing shell first, so a text scrape
+  // a few seconds after navigation reports "logged out" on a signed-in account.
+  const findComposer = async () => {
+    const r = await page.send('Runtime.evaluate', { expression: FIND_COMPOSER, returnByValue: true });
+    return r.result.value;
   };
 
-  if (site.needsLogin && site.loggedOut && site.loggedOut(await pageText())) {
+  let composer = null;
+  try {
+    composer = await waitFor(findComposer, { timeout: 45000, interval: 2000, label: 'the app to load' });
+  } catch (_) {
     const waitMin = Number(process.env.AEO_LOGIN_WAIT_MIN || 10);
     console.log('\n─────────────────────────────────────────────');
-    console.log(`Not signed in to ${which}. A Chrome window is open on ${site.url}.`);
-    console.log('Sign in there and this test continues on its own.');
+    console.log(`No message box on ${which} — probably not signed in.`);
+    console.log(`A Chrome window is open on ${site.url}; sign in there and`);
+    console.log('this test continues on its own.');
     console.log(`Waiting up to ${waitMin} minutes. The profile at`);
     console.log(`  ${PROFILE}`);
     console.log('persists, so this is a one-time step per site.');
     console.log('─────────────────────────────────────────────\n');
     try {
-      await waitFor(async () => !site.loggedOut(await pageText()),
-        { timeout: waitMin * 60000, interval: 5000, label: 'sign-in' });
+      composer = await waitFor(findComposer, { timeout: waitMin * 60000, interval: 5000, label: 'sign-in' });
       console.log('signed in — continuing\n');
       await sleep(4000);
-    } catch (_) {
-      console.log('SKIPPED — still signed out after ' + waitMin + ' minutes.');
+    } catch (_e) {
+      console.log('SKIPPED — no message box after ' + waitMin + ' minutes.');
       process.exit(3);
     }
   }
+  console.log('composer:', composer);
 
   console.log('sending prompt:', prompt);
   const focused = await page.send('Runtime.evaluate', {
     expression: `(() => {
-      for (const sel of ${JSON.stringify(COMPOSERS)}) {
-        for (const el of document.querySelectorAll(sel)) {
-          const r = el.getBoundingClientRect();
-          if (r.width > 80 && r.height > 10 && !el.disabled && el.offsetParent !== null) {
-            el.focus(); el.click(); return sel;
-          }
-        }
+      const sel = ${JSON.stringify(composer)};
+      for (const el of document.querySelectorAll(sel)) {
+        const r = el.getBoundingClientRect();
+        if (r.width > 80 && r.height > 10 && !el.disabled) { el.focus(); el.click(); return sel; }
       }
       return null;
     })()`,
     returnByValue: true,
   });
-  if (!focused.result.value) { console.error('could not find the composer'); process.exit(1); }
+  if (!focused.result.value) { console.error('could not focus the composer'); process.exit(1); }
 
   await sleep(700);
   await page.send('Input.insertText', { text: prompt });
