@@ -18,8 +18,7 @@
     "https://perplexity.ai/*",
     "https://www.perplexity.ai/*",
     "https://gemini.google.com/*",
-    "https://copilot.microsoft.com/*",
-    "https://www.bing.com/*"
+    "https://copilot.microsoft.com/*"
   ],
   "background": {
     "service_worker": "background.js"
