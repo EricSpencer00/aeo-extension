@@ -102,6 +102,16 @@
       }
     }
 
+    // ChatGPT streams later frames as JSON-pointer patches rather than whole
+    // objects: {"p": "/message/metadata/search_model_queries/queries/0",
+    //           "o": "add", "v": "best noise cancelling headphones"}.
+    // The recursive walk below already finds patches whose value is a whole
+    // object; this catches the ones that carry a bare string at a query path.
+    if (typeof node.p === 'string' && /quer|search/i.test(node.p)) {
+      if (typeof node.v === 'string') pushOne(node.v, out);
+      else if (Array.isArray(node.v)) pushAll(node.v, out);
+    }
+
     // Claude / Anthropic tool_use and server_tool_use blocks.
     if ((node.type === 'tool_use' || node.type === 'server_tool_use' || node.type === 'mcp_tool_use') &&
         looksLikeSearchTool(node.name)) {

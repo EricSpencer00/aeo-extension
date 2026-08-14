@@ -169,6 +169,26 @@ check('extracts the human prompt from a ChatGPT request body', () => {
   eq(AEO.extractUserPrompt('ChatGPT', body), 'how do I rank in AI answers');
 });
 
+check('captures queries delivered as JSON-pointer delta patches', () => {
+  const sse = [
+    'data: {"p":"/message/metadata/search_model_queries/queries/0","o":"add","v":"ergonomic chair lumbar support review"}',
+    '',
+    'data: {"p":"/message/metadata/search_model_queries/queries","o":"append","v":["best standing desk 2026"]}',
+    '',
+    'data: {"p":"/message/content/parts/0","o":"append","v":"some ordinary answer text"}',
+    '',
+  ].join('\n');
+  eq(runStream('ChatGPT', sse), [
+    'ergonomic chair lumbar support review',
+    'best standing desk 2026',
+  ]);
+});
+
+check('ignores patches whose path is unrelated to search', () => {
+  const sse = 'data: {"p":"/message/content/parts/0","o":"append","v":"not a query"}\n\n';
+  eq(runStream('ChatGPT', sse), []);
+});
+
 check('matches ChatGPT conversation endpoints incl. logged-out', () => {
   assert(AEO.isInterestingRequest('ChatGPT', 'https://chatgpt.com/backend-api/f/conversation', 'POST'));
   assert(AEO.isInterestingRequest('ChatGPT', 'https://chatgpt.com/backend-api/conversation', 'POST'));
