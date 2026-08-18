@@ -3,6 +3,7 @@
   "name": "AEO Queries — See What AI Actually Searches",
   "version": "2.0.0",
   "description": "Reveals the exact web-search queries ChatGPT, Claude, and Perplexity run for your prompts, so you know what to rank for.",
+  "homepage_url": "https://ericspencer.us/projects/aeo-queries.html",
   "permissions": [
     "storage",
     "sidePanel"
