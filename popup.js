@@ -175,8 +175,23 @@ function renderDiagnostics() {
     'protocol, this is what shows it.',
   ]));
   for (const d of diagnostics.slice().reverse()) {
+    const head = el('div', {}, [el('span', { class: 'badge ' + cssClass(d.source) }, [d.source]), ' ', when(d.ts)]);
+    // A load failure is not a protocol change. There is no byte count or key
+    // list to show, only the one thing the person can do about it.
+    if (d.info && d.info.error === 'parsers-missing') {
+      view.appendChild(el('div', { class: 'diag' }, [
+        head,
+        el('div', { class: 'u' }, [d.url || '']),
+        el('div', { class: 'k' }, [
+          'parsers.js did not load on this page, so nothing could be captured. ' +
+          'This happens when the extension files were updated but the extension was not reloaded. ' +
+          'Open the extensions page and click Reload.',
+        ]),
+      ]));
+      continue;
+    }
     view.appendChild(el('div', { class: 'diag' }, [
-      el('div', {}, [el('span', { class: 'badge ' + cssClass(d.source) }, [d.source]), ' ', when(d.ts)]),
+      head,
       el('div', { class: 'u' }, [d.url || '']),
       el('div', { class: 'k' }, [
         d.info ? `${d.info.bytes} bytes · events: ${(d.info.events || []).join(', ') || 'none'}` : '',

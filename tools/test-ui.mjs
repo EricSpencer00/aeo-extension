@@ -53,6 +53,14 @@ const SEED = {
       url: 'https://chatgpt.com/unauth-mweb/conversation/updates',
       info: { bytes: 188298, events: [], keys: ['type:12', 'name:4'] },
     },
+    // What injected.js records when parsers.js never loaded (a stale unpacked
+    // load after an update). It must read as a sentence a person can act on,
+    // not as "undefined bytes".
+    {
+      ts: Date.now() - 4000, source: 'chatgpt.com',
+      url: 'https://chatgpt.com/',
+      info: { error: 'parsers-missing' },
+    },
   ],
 };
 
@@ -162,6 +170,10 @@ async function main() {
     await evalPage(`/perplexity/i.test(document.body.innerText) && /3 queries across 1 prompt/.test(document.body.innerText)`));
   check('status tab surfaces the diagnostic record',
     await evalPage(`document.body.innerText.includes('unauth-mweb')`));
+  check('status tab explains a parsers-missing load failure in words',
+    await evalPage(`/reload/i.test(document.body.innerText) && /parsers\\.js/.test(document.body.innerText)`));
+  check('load failure is not rendered as an undefined byte count',
+    await evalPage(`!document.body.innerText.includes('undefined bytes')`));
   await shot('04-status');
 
   // export

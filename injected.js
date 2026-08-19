@@ -278,6 +278,16 @@
     window.EventSource = Patched;
   }
 
+  // parsers.js is declared ahead of this file in the same MAIN-world entry,
+  // so it should always be here. If it is not, every tap above silently
+  // no-ops and the panel looks exactly as if the site had stopped searching.
+  // Say so instead: once in the console, once in the Status tab.
+  if (!P()) {
+    console.warn('[AEO Queries] parsers.js did not load, so nothing will be captured on ' +
+      location.hostname + '. If the extension files were updated, open the extensions page and click Reload.');
+    emitDiagnostic(null, location.hostname, location.href, { error: 'parsers-missing' });
+  }
+
   log('injected on', location.hostname, 'source=', getSource());
   post({ kind: 'ready', source: getSource() });
 })();
