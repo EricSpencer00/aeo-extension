@@ -423,7 +423,11 @@
     switch (source) {
       case 'Perplexity':
         // Only the answer stream. /rest/thread/* and friends carry no queries
-        // and would otherwise register empty turns.
+        // and would otherwise register empty turns. The GraphQL sibling of
+        // perplexity_ask is metadata for the same turn: it never carries a
+        // query, and tapping it filed a "nothing found" diagnostic on every
+        // single prompt, which is noise that buries the real signal.
+        if (/\/graphql(\?|$)/i.test(u)) return false;
         return /\/rest\/sse\/|perplexity_ask/i.test(u);
       case 'ChatGPT':
         // The answer stream only. /conversation/init, /prepare and /runtime are

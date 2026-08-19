@@ -222,6 +222,14 @@ check('matches ChatGPT conversation endpoints incl. logged-out', () => {
   assert(!AEO.isInterestingRequest('ChatGPT', 'https://chatgpt.com/backend-api/f/conversation/prepare', 'POST'));
 });
 
+check('taps the Perplexity answer stream and not its GraphQL sibling', () => {
+  assert(AEO.isInterestingRequest('Perplexity', 'https://www.perplexity.ai/rest/sse/perplexity_ask', 'POST'));
+  // Seen on a live run: metadata for the same turn, never carries a query,
+  // and filed a "nothing found" diagnostic on every prompt.
+  assert(!AEO.isInterestingRequest('Perplexity', 'https://www.perplexity.ai/rest/perplexity_ask/graphql', 'POST'));
+  assert(!AEO.isInterestingRequest('Perplexity', 'https://www.perplexity.ai/rest/thread/list', 'POST'));
+});
+
 check('recovers queries from a real signed-in ChatGPT stream', () => {
   // Captured from chatgpt.com on a signed-in account, then scrubbed of ids and
   // tokens. Both shapes below are what the live protocol actually sends:
@@ -241,6 +249,18 @@ console.log('\nPerplexity — replayed from live capture');
 const CAP = path.join(FIX, 'perplexity-multistep.json');
 check('recovers every issued query from a real multi-step search', () => {
   const cap = JSON.parse(fs.readFileSync(CAP, 'utf8'));
+  const got = runStream('Perplexity', cap.resBody, 4096);
+  eq(AEO.extractUserPrompt('Perplexity', cap.reqBody), cap.expectedPrompt);
+  for (const q of cap.expectedQueries) {
+    assert(got.includes(q), 'missing: ' + q + '\n      got ' + JSON.stringify(got, null, 1));
+  }
+  eq(got.length, cap.expectedQueries.length, 'unexpected extra queries: ' +
+    JSON.stringify(got.filter((q) => !cap.expectedQueries.includes(q))));
+});
+
+const CAP2 = path.join(FIX, 'perplexity-2026-08-18.json');
+check('still recovers every query after Perplexity added the graphql endpoint', () => {
+  const cap = JSON.parse(fs.readFileSync(CAP2, 'utf8'));
   const got = runStream('Perplexity', cap.resBody, 4096);
   eq(AEO.extractUserPrompt('Perplexity', cap.reqBody), cap.expectedPrompt);
   for (const q of cap.expectedQueries) {
