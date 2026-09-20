@@ -16,13 +16,23 @@ debugEl.addEventListener('change', () => {
   });
 });
 
-document.getElementById('clear').addEventListener('click', () => {
-  chrome.storage.local.set({ turns: [], diagnostics: [] }, () => {
-    showStats([], []);
-    statusEl.textContent = 'Deleted.';
-    setTimeout(() => { statusEl.textContent = ''; }, 3000);
+document.getElementById('clear').addEventListener('click', clearStoredData);
+
+function clearStoredData() {
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage({ type: 'AEO_CLEAR' }, (response) => {
+      if (chrome.runtime.lastError || !response || !response.ok) {
+        statusEl.textContent = 'Delete failed.';
+        resolve(false);
+        return;
+      }
+      showStats([], []);
+      statusEl.textContent = 'Deleted.';
+      setTimeout(() => { statusEl.textContent = ''; }, 3000);
+      resolve(true);
+    });
   });
-});
+}
 
 function showStats(turns, diagnostics) {
   const queries = turns.reduce((a, t) => a + t.queries.length, 0);

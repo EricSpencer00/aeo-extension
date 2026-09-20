@@ -244,11 +244,19 @@ function csvCell(v) {
 }
 
 function clearAll() {
-  chrome.storage.local.set({ turns: [], diagnostics: [] }, () => {
-    turns = [];
-    diagnostics = [];
-    render();
-    toast('Cleared');
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage({ type: 'AEO_CLEAR' }, (response) => {
+      if (chrome.runtime.lastError || !response || !response.ok) {
+        toast('Clear failed');
+        resolve(false);
+        return;
+      }
+      turns = [];
+      diagnostics = [];
+      render();
+      toast('Cleared');
+      resolve(true);
+    });
   });
 }
 
