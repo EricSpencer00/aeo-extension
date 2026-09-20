@@ -21,16 +21,40 @@ chrome.action.onClicked.addListener((tab) => {
 let chain = Promise.resolve();
 
 function withStore(fn) {
-  chain = chain.then(() => fn()).catch((e) => console.warn('[AEO] store error', e));
-  return chain;
+  const operation = chain.then(() => fn());
+  // Keep the queue usable after one storage operation fails, but return the
+  // original promise so callers that need an acknowledgement can distinguish
+  // a completed transaction from a failed one.
+  chain = operation.catch((e) => console.warn('[AEO] store error', e));
+  return operation;
+}
+
+function enqueue(fn, sendResponse) {
+  withStore(fn).then(
+    () => sendResponse({ ok: true }),
+    () => sendResponse({ ok: false })
+  );
+  return true;
 }
 
 function get(keys) {
-  return new Promise((resolve) => chrome.storage.local.get(keys, resolve));
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.get(keys, (result) => {
+      const error = chrome.runtime.lastError;
+      if (error) reject(new Error(error.message));
+      else resolve(result);
+    });
+  });
 }
 
 function set(obj) {
-  return new Promise((resolve) => chrome.storage.local.set(obj, resolve));
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.set(obj, () => {
+      const error = chrome.runtime.lastError;
+      if (error) reject(new Error(error.message));
+      else resolve();
+    });
+  });
 }
 
 // ── Messages ────────────────────────────────────────────────────────────────
@@ -39,20 +63,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   switch (msg.type) {
     case 'AEO_TURN':
-      withStore(() => addTurn(msg));
-      break;
+      return enqueue(() => addTurn(msg), sendResponse);
     case 'AEO_QUERY':
-      withStore(() => addQuery(msg));
-      break;
+      return enqueue(() => addQuery(msg), sendResponse);
     case 'AEO_DIAGNOSTIC':
-      withStore(() => addDiagnostic(msg));
-      break;
+      return enqueue(() => addDiagnostic(msg), sendResponse);
     case 'AEO_CLEAR':
-      withStore(async () => {
-        await set({ turns: [], diagnostics: [] });
-        sendResponse({ ok: true });
-      });
-      return true;
+      return enqueue(() => set({ turns: [], diagnostics: [] }), sendResponse);
     default:
       break;
   }

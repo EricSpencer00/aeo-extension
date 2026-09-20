@@ -197,18 +197,75 @@ async function main() {
     await evalPage(`document.getElementById('count').textContent`) === '0 queries');
   await shot('05-empty');
 
+  // Capture writes and destructive actions share the service worker queue. A
+  // clear must run after the writes already in flight, rather than racing a
+  // read-modify-write and allowing old data to reappear.
+  await sw.send('Runtime.evaluate', {
+    expression: `new Promise(r => chrome.storage.local.set({
+      turns: [{id:'clear-race-seed', source:'Perplexity', ts:Date.now(), prompt:'seed', queries:[]}],
+      diagnostics: [{ts:Date.now(), source:'Perplexity', url:'https://www.perplexity.ai/', info:{bytes:900, events:[], keys:[]}}]
+    }, () => r(1)))`,
+    awaitPromise: true,
+  });
+  const clearResults = await evalPage(`(() => {
+    const writes = [];
+    for (let i = 0; i < 20; i++) {
+      writes.push(new Promise((resolve) => chrome.runtime.sendMessage({
+        type: 'AEO_QUERY', turnId: 'clear-race-' + i, source: 'Perplexity',
+        query: 'queued capture query ' + i,
+      }, (response) => resolve(!!response && response.ok === true))));
+    }
+    writes.push(clearAll());
+    return Promise.all(writes);
+  })()`);
+  check('queued capture writes and clear are acknowledged',
+    clearResults.every(Boolean), JSON.stringify(clearResults));
+  const cleared = await sw.send('Runtime.evaluate', {
+    expression: `new Promise(r => chrome.storage.local.get(['turns','diagnostics'], d => r(JSON.stringify({
+      turns: d.turns || [], diagnostics: d.diagnostics || []
+    }))))`,
+    awaitPromise: true, returnByValue: true,
+  });
+  const clearState = JSON.parse(cleared.result.value);
+  check('clear drains queued capture writes',
+    clearState.turns.length === 0 && clearState.diagnostics.length === 0,
+    JSON.stringify(clearState));
+  check('side-panel clear leaves the UI empty',
+    await evalPage(`document.getElementById('count').textContent`) === '0 queries');
+
   check('no console errors in the panel', errors.length === 0, errors.join(' | '));
 
   // ── Options page ──────────────────────────────────────────────────────────
   console.log('\noptions page');
+  await sw.send('Runtime.evaluate', {
+    expression: `new Promise(r => chrome.storage.local.set({
+      turns: [{id:'options-seed', source:'Claude', ts:Date.now(), prompt:'seed', queries:[{q:'options clear query', ts:Date.now()}]}],
+      diagnostics: [{ts:Date.now(), source:'Claude', url:'https://claude.ai/', info:{bytes:900, events:[], keys:[]}}]
+    }, () => r(1)))`,
+    awaitPromise: true,
+  });
   const otab = await newTab(`chrome-extension://${extId}/options.html`, PORT);
   const opage = await Session.attach(otab.webSocketDebuggerUrl);
   await opage.send('Runtime.enable');
   const oerrors = [];
   opage.on('Runtime.exceptionThrown', (p) => oerrors.push(p.exceptionDetails.text));
   await sleep(1200);
-  const oEval = async (e) => (await opage.send('Runtime.evaluate', { expression: e, returnByValue: true })).result.value;
+  const oEval = async (e) => (await opage.send('Runtime.evaluate', {
+    expression: e, returnByValue: true, awaitPromise: true,
+  })).result.value;
   check('options page renders', await oEval(`document.body.innerText.includes('Where your data lives')`));
+  check('options delete is acknowledged', await oEval('clearStoredData()') === true);
+  const optionsCleared = await sw.send('Runtime.evaluate', {
+    expression: `new Promise(r => chrome.storage.local.get(['turns','diagnostics'], d => r(JSON.stringify({
+      turns: d.turns || [], diagnostics: d.diagnostics || []
+    }))))`,
+    awaitPromise: true, returnByValue: true,
+  });
+  const optionsClearState = JSON.parse(optionsCleared.result.value);
+  check('options delete uses the serialized clear',
+    optionsClearState.turns.length === 0 && optionsClearState.diagnostics.length === 0,
+    JSON.stringify(optionsClearState));
+  check('options reports a completed delete', await oEval(`document.getElementById('status').textContent`) === 'Deleted.');
   check('debug toggle persists', await (async () => {
     await oEval(`(() => { const c=document.getElementById('debug'); c.checked=true; c.dispatchEvent(new Event('change')); })()`);
     await sleep(600);
